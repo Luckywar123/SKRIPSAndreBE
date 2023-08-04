@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Waktu pembuatan: 04 Agu 2023 pada 16.00
+-- Waktu pembuatan: 04 Agu 2023 pada 16.53
 -- Versi server: 10.4.28-MariaDB
 -- Versi PHP: 8.2.4
 
@@ -20,6 +20,35 @@ SET time_zone = "+00:00";
 --
 -- Database: `inventorydb`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `history`
+--
+
+CREATE TABLE `history` (
+  `idHistory` int(11) NOT NULL,
+  `idSKU` int(11) DEFAULT NULL,
+  `tanggal` date DEFAULT NULL,
+  `jumlah` varchar(50) DEFAULT NULL,
+  `status` varchar(50) DEFAULT NULL,
+  `idBarang` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `kasir`
+--
+
+CREATE TABLE `kasir` (
+  `idKasir` int(11) NOT NULL,
+  `nama_barang` varchar(100) NOT NULL,
+  `harga_satuan` int(11) NOT NULL,
+  `jumlah` int(11) NOT NULL,
+  `idSKU` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -90,6 +119,21 @@ INSERT INTO `skus` (`idSKU`, `skuCode`, `productionDate`, `expiredDate`, `inboun
 -- --------------------------------------------------------
 
 --
+-- Struktur dari tabel `transaksi`
+--
+
+CREATE TABLE `transaksi` (
+  `idTransaksi` int(11) NOT NULL,
+  `kode_transaksi` varchar(50) DEFAULT NULL,
+  `jenis_transaksi` varchar(50) DEFAULT NULL,
+  `harga` decimal(10,2) DEFAULT NULL,
+  `tanggal` date DEFAULT NULL,
+  `idKasir` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Struktur dari tabel `users`
 --
 
@@ -109,6 +153,21 @@ INSERT INTO `users` (`id`, `username`, `password`) VALUES
 --
 -- Indexes for dumped tables
 --
+
+--
+-- Indeks untuk tabel `history`
+--
+ALTER TABLE `history`
+  ADD PRIMARY KEY (`idHistory`),
+  ADD KEY `idSKU` (`idSKU`),
+  ADD KEY `idBarang` (`idBarang`);
+
+--
+-- Indeks untuk tabel `kasir`
+--
+ALTER TABLE `kasir`
+  ADD PRIMARY KEY (`idKasir`),
+  ADD KEY `idSKU` (`idSKU`);
 
 --
 -- Indeks untuk tabel `products`
@@ -132,6 +191,13 @@ ALTER TABLE `skus`
   ADD KEY `idBarang` (`idBarang`);
 
 --
+-- Indeks untuk tabel `transaksi`
+--
+ALTER TABLE `transaksi`
+  ADD PRIMARY KEY (`idTransaksi`),
+  ADD KEY `idKasir` (`idKasir`);
+
+--
 -- Indeks untuk tabel `users`
 --
 ALTER TABLE `users`
@@ -141,6 +207,18 @@ ALTER TABLE `users`
 --
 -- AUTO_INCREMENT untuk tabel yang dibuang
 --
+
+--
+-- AUTO_INCREMENT untuk tabel `history`
+--
+ALTER TABLE `history`
+  MODIFY `idHistory` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT untuk tabel `kasir`
+--
+ALTER TABLE `kasir`
+  MODIFY `idKasir` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT untuk tabel `products`
@@ -161,6 +239,12 @@ ALTER TABLE `skus`
   MODIFY `idSKU` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
+-- AUTO_INCREMENT untuk tabel `transaksi`
+--
+ALTER TABLE `transaksi`
+  MODIFY `idTransaksi` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT untuk tabel `users`
 --
 ALTER TABLE `users`
@@ -169,6 +253,19 @@ ALTER TABLE `users`
 --
 -- Ketidakleluasaan untuk tabel pelimpahan (Dumped Tables)
 --
+
+--
+-- Ketidakleluasaan untuk tabel `history`
+--
+ALTER TABLE `history`
+  ADD CONSTRAINT `history_ibfk_1` FOREIGN KEY (`idSKU`) REFERENCES `skus` (`idSKU`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `history_ibfk_2` FOREIGN KEY (`idBarang`) REFERENCES `products` (`idBarang`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Ketidakleluasaan untuk tabel `kasir`
+--
+ALTER TABLE `kasir`
+  ADD CONSTRAINT `kasir_ibfk_1` FOREIGN KEY (`idSKU`) REFERENCES `skus` (`idSKU`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Ketidakleluasaan untuk tabel `return_items`
@@ -182,6 +279,12 @@ ALTER TABLE `return_items`
 --
 ALTER TABLE `skus`
   ADD CONSTRAINT `skus_ibfk_1` FOREIGN KEY (`idBarang`) REFERENCES `products` (`idBarang`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Ketidakleluasaan untuk tabel `transaksi`
+--
+ALTER TABLE `transaksi`
+  ADD CONSTRAINT `transaksi_ibfk_1` FOREIGN KEY (`idKasir`) REFERENCES `kasir` (`idKasir`) ON DELETE CASCADE ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
