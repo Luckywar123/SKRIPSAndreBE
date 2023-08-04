@@ -14,8 +14,8 @@ app.use(cors());
 const connection = mysql.createConnection({
   host: "localhost",
   user: "root",
-  password: "password",
-  database: "inventory-a3", // Replace with your database name
+  password: "",
+  database: "inventorydb", // Replace with your database name
 });
 
 connection.connect((err) => {
