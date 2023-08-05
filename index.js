@@ -39,7 +39,11 @@ app.get("/products", (req, res) => {
 // Fetch skus for a specific product
 app.get("/products/:idBarang/skus", (req, res) => {
   const idBarang = req.params.idBarang;
-  const query = "SELECT * FROM skus WHERE idBarang = ?";
+  const query = `SELECT p.nama, p.idBarang, s.* 
+  FROM skus s 
+  LEFT JOIN products p ON s.idBarang = p.idBarang
+  WHERE s.idBarang = ?
+  `;
   connection.query(query, [idBarang], (err, results) => {
     if (err) {
       console.error("Error fetching skus:", err);
