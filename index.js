@@ -22,6 +22,33 @@ connection.connect((err) => {
   if (err) throw err;
   console.log("Connected to the MySQL database");
 });
+// Route for user login
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+  const query = "SELECT * FROM users WHERE username = ?";
+  connection.query(query, [username], (err, results) => {
+    if (err) {
+      console.error("Error fetching user data:", err);
+      res.status(500).json({ error: "Error fetching user data" });
+    } else {
+      if (results.length === 0) {
+        // If the user is not found, return an error response
+        res.status(401).json({ message: "User not found" });
+      } else {
+        // Check if the provided password matches the hashed password in the database
+        // (You should use a proper password hashing library like bcrypt for security)
+        const user = results[0];
+        if (user.password === password) {
+          // If the password matches, return a success response
+          res.json({ message: "Login successful" });
+        } else {
+          // If the password does not match, return an error response
+          res.status(401).json({ message: "Incorrect password" });
+        }
+      }
+    }
+  });
+});
 
 // Fetch products from the database
 app.get("/products", (req, res) => {
