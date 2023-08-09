@@ -177,7 +177,6 @@ app.post("/products", (req, res) => {
     });
   }
 });
-
 app.post("/return-items", (req, res) => {
   const { idBarang, idSKU, jumlah, alasan } = req.body;
 
@@ -310,7 +309,7 @@ app.get("/kasir", (req, res) => {
 // Route to insert data into the kasir table
 app.post("/kasir", (req, res) => {
   const { idTransaksi, jumlah, idSKU } = req.body;
-
+  console.log(req.body);
   // Check if idSKU is valid
   const checkSkuQuery = "SELECT * FROM skus WHERE idSKU = ?";
   connection.query(checkSkuQuery, [idSKU], (err, skuResults) => {
