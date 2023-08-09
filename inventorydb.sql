@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Waktu pembuatan: 04 Agu 2023 pada 16.53
+-- Waktu pembuatan: 09 Agu 2023 pada 10.11
 -- Versi server: 10.4.28-MariaDB
 -- Versi PHP: 8.2.4
 
@@ -29,11 +29,13 @@ SET time_zone = "+00:00";
 
 CREATE TABLE `history` (
   `idHistory` int(11) NOT NULL,
-  `idSKU` int(11) DEFAULT NULL,
   `tanggal` date DEFAULT NULL,
-  `jumlah` varchar(50) DEFAULT NULL,
-  `status` varchar(50) DEFAULT NULL,
-  `idBarang` int(11) DEFAULT NULL
+  `jumlah` int(11) DEFAULT NULL,
+  `idReturn` int(11) DEFAULT NULL,
+  `idTransaksi` int(11) DEFAULT NULL,
+  `idBarang` int(11) DEFAULT NULL,
+  `idSKU` int(11) DEFAULT NULL,
+  `jenis_transaksi` varchar(50) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -43,12 +45,17 @@ CREATE TABLE `history` (
 --
 
 CREATE TABLE `kasir` (
-  `idKasir` int(11) NOT NULL,
-  `nama_barang` varchar(100) NOT NULL,
-  `harga_satuan` int(11) NOT NULL,
+  `idTransaksi` int(11) NOT NULL,
   `jumlah` int(11) NOT NULL,
   `idSKU` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data untuk tabel `kasir`
+--
+
+INSERT INTO `kasir` (`idTransaksi`, `jumlah`, `idSKU`) VALUES
+(23, 10, 16);
 
 -- --------------------------------------------------------
 
@@ -59,16 +66,17 @@ CREATE TABLE `kasir` (
 CREATE TABLE `products` (
   `idBarang` int(11) NOT NULL,
   `nama` varchar(255) DEFAULT NULL,
-  `indicator` int(11) DEFAULT NULL
+  `indicator` int(11) DEFAULT NULL,
+  `harga` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data untuk tabel `products`
 --
 
-INSERT INTO `products` (`idBarang`, `nama`, `indicator`) VALUES
-(1, 'Produk A', 100),
-(2, 'Produk B', 200);
+INSERT INTO `products` (`idBarang`, `nama`, `indicator`, `harga`) VALUES
+(1, 'Produk A', 100, 20000),
+(2, 'Produk B', 200, 500000);
 
 -- --------------------------------------------------------
 
@@ -83,6 +91,28 @@ CREATE TABLE `return_items` (
   `jumlah` varchar(50) NOT NULL,
   `alasan` varchar(255) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data untuk tabel `return_items`
+--
+
+INSERT INTO `return_items` (`id`, `idBarang`, `idSKU`, `jumlah`, `alasan`) VALUES
+(22, 1, 16, '1', 'Rusak'),
+(23, 1, 16, '1', 'Salah Barang'),
+(24, 2, 17, '1', 'Salah Barang'),
+(25, 2, 17, '1', 'Salah Barang'),
+(26, 2, 17, '1', 'Salah Barang'),
+(27, 1, 16, '1', 'Salah Barang'),
+(28, 2, 17, '1', 'Salah Barang'),
+(29, 2, 6, '1', 'Salah Barang'),
+(30, 1, 1, '1', 'Salah Barang'),
+(31, 2, 17, '1', 'Salah Barang'),
+(32, 2, 17, '1', 'Rusak'),
+(33, 1, 16, '1', 'Salah Barang'),
+(34, 2, 17, '1', 'Salah Barang'),
+(35, 1, 1, '1', 'Salah Barang'),
+(36, 2, 17, '4', 'Rusak'),
+(37, 1, 1, '3', 'Rusak');
 
 -- --------------------------------------------------------
 
@@ -105,31 +135,11 @@ CREATE TABLE `skus` (
 --
 
 INSERT INTO `skus` (`idSKU`, `skuCode`, `productionDate`, `expiredDate`, `inboundDate`, `stok`, `idBarang`) VALUES
-(1, 'SKU001', '2023-08-01', '2023-12-31', '2023-07-15', 50, 1),
-(2, 'SKU002', '2023-08-02', '2023-12-31', '2023-07-15', 30, 1),
-(3, 'SKU003', '2023-08-03', '2023-12-31', '2023-07-15', 40, 1),
-(4, 'SKU004', '2023-08-04', '2023-12-31', '2023-07-15', 20, 1),
-(5, 'SKU005', '2023-08-05', '2023-12-31', '2023-07-15', 10, 1),
+(1, 'SKU001', '2023-08-01', '2023-12-31', '2023-07-15', 35, 1),
 (6, 'SKU101', '2023-08-01', '2024-12-31', '2023-07-15', 60, 2),
-(7, 'SKU102', '2023-08-02', '2024-12-31', '2023-07-15', 80, 2),
-(8, 'SKU103', '2023-08-03', '2024-12-31', '2023-07-15', 90, 2),
-(9, 'SKU104', '2023-08-04', '2024-12-31', '2023-07-15', 70, 2),
-(10, 'SKU105', '2023-08-05', '2024-12-31', '2023-07-15', 50, 2);
-
--- --------------------------------------------------------
-
---
--- Struktur dari tabel `transaksi`
---
-
-CREATE TABLE `transaksi` (
-  `idTransaksi` int(11) NOT NULL,
-  `kode_transaksi` varchar(50) DEFAULT NULL,
-  `jenis_transaksi` varchar(50) DEFAULT NULL,
-  `harga` decimal(10,2) DEFAULT NULL,
-  `tanggal` date DEFAULT NULL,
-  `idKasir` int(11) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+(16, '12345', '2013-08-01', '2026-08-01', '2022-08-01', 78, 1),
+(17, '6789', '2013-10-01', '2036-10-01', '2020-10-01', 61, 2),
+(26, '3234', '2023-08-01', '2023-08-03', '2023-08-02', 12, 1);
 
 -- --------------------------------------------------------
 
@@ -159,14 +169,16 @@ INSERT INTO `users` (`id`, `username`, `password`) VALUES
 --
 ALTER TABLE `history`
   ADD PRIMARY KEY (`idHistory`),
-  ADD KEY `idSKU` (`idSKU`),
-  ADD KEY `idBarang` (`idBarang`);
+  ADD KEY `history_ibfk_1` (`idBarang`),
+  ADD KEY `history_ibfk_2` (`idSKU`),
+  ADD KEY `idReturn` (`idReturn`),
+  ADD KEY `history_ibfk_3` (`idTransaksi`);
 
 --
 -- Indeks untuk tabel `kasir`
 --
 ALTER TABLE `kasir`
-  ADD PRIMARY KEY (`idKasir`),
+  ADD PRIMARY KEY (`idTransaksi`),
   ADD KEY `idSKU` (`idSKU`);
 
 --
@@ -191,13 +203,6 @@ ALTER TABLE `skus`
   ADD KEY `idBarang` (`idBarang`);
 
 --
--- Indeks untuk tabel `transaksi`
---
-ALTER TABLE `transaksi`
-  ADD PRIMARY KEY (`idTransaksi`),
-  ADD KEY `idKasir` (`idKasir`);
-
---
 -- Indeks untuk tabel `users`
 --
 ALTER TABLE `users`
@@ -212,37 +217,31 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT untuk tabel `history`
 --
 ALTER TABLE `history`
-  MODIFY `idHistory` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `idHistory` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT untuk tabel `kasir`
 --
 ALTER TABLE `kasir`
-  MODIFY `idKasir` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `idTransaksi` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=24;
 
 --
 -- AUTO_INCREMENT untuk tabel `products`
 --
 ALTER TABLE `products`
-  MODIFY `idBarang` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `idBarang` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 
 --
 -- AUTO_INCREMENT untuk tabel `return_items`
 --
 ALTER TABLE `return_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=50;
 
 --
 -- AUTO_INCREMENT untuk tabel `skus`
 --
 ALTER TABLE `skus`
-  MODIFY `idSKU` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
-
---
--- AUTO_INCREMENT untuk tabel `transaksi`
---
-ALTER TABLE `transaksi`
-  MODIFY `idTransaksi` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `idSKU` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
 
 --
 -- AUTO_INCREMENT untuk tabel `users`
@@ -258,8 +257,10 @@ ALTER TABLE `users`
 -- Ketidakleluasaan untuk tabel `history`
 --
 ALTER TABLE `history`
-  ADD CONSTRAINT `history_ibfk_1` FOREIGN KEY (`idSKU`) REFERENCES `skus` (`idSKU`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `history_ibfk_2` FOREIGN KEY (`idBarang`) REFERENCES `products` (`idBarang`) ON DELETE CASCADE ON UPDATE CASCADE;
+  ADD CONSTRAINT `history_ibfk_1` FOREIGN KEY (`idBarang`) REFERENCES `products` (`idBarang`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `history_ibfk_2` FOREIGN KEY (`idSKU`) REFERENCES `skus` (`idSKU`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `history_ibfk_3` FOREIGN KEY (`idTransaksi`) REFERENCES `kasir` (`idTransaksi`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `history_ibfk_4` FOREIGN KEY (`idReturn`) REFERENCES `return_items` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Ketidakleluasaan untuk tabel `kasir`
@@ -279,12 +280,6 @@ ALTER TABLE `return_items`
 --
 ALTER TABLE `skus`
   ADD CONSTRAINT `skus_ibfk_1` FOREIGN KEY (`idBarang`) REFERENCES `products` (`idBarang`) ON DELETE CASCADE ON UPDATE CASCADE;
-
---
--- Ketidakleluasaan untuk tabel `transaksi`
---
-ALTER TABLE `transaksi`
-  ADD CONSTRAINT `transaksi_ibfk_1` FOREIGN KEY (`idKasir`) REFERENCES `kasir` (`idKasir`) ON DELETE CASCADE ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

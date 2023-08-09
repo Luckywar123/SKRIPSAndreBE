@@ -133,7 +133,7 @@ app.post("/products/:idBarang/skus", (req, res) => {
 
           connection.query(
             insertHistoryQuery,
-            [currentDate, stok, idBarang, newSKU.idSKU, 'Addition'],
+            [currentDate, stok, idBarang, newSKU.idSKU, 'Barang Masuk'],
             (err, historyResult) => {
               if (err) {
                 console.error("Error adding to history:", err);
