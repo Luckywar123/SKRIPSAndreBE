@@ -93,37 +93,76 @@ app.post("/products/:idBarang/skus", (req, res) => {
   const idBarang = req.params.idBarang;
   const { skuCode, productionDate, expiredDate, inboundDate, stok } = req.body;
 
-
   const insertQuery = `
     INSERT INTO skus (idBarang, skuCode, productionDate, expiredDate, inboundDate, stok)
     VALUES (?, ?, ?, ?, ?, ?)
-  `;console.log("Received data from frontend:", req.body);
+  `;
 
-  connection.query(
-    insertQuery,
-    [idBarang, skuCode, productionDate, expiredDate, inboundDate, stok],
-    (err, result) => {
-      if (err) {
-        console.error("Error adding new SKU:", err);
-        res.status(500).json({ error: "Error adding new SKU" });
-      } else {
-        const newSKU = {
-          idSKU: result.insertId,
-          skuCode,
-          productionDate,
-          expiredDate,
-          inboundDate,
-          stok,
-        };
-        res.json({
-          message: "New SKU added successfully",
-          data: newSKU,
-        });
-      }
+  console.log("Received data from frontend:", req.body);
+
+  connection.beginTransaction(async (err) => {
+    if (err) {
+      return res.status(500).json({ error: "Error starting database transaction" });
     }
-    
-  );
+
+    connection.query(
+      insertQuery,
+      [idBarang, skuCode, productionDate, expiredDate, inboundDate, stok],
+      (err, result) => {
+        if (err) {
+          console.error("Error adding new SKU:", err);
+          connection.rollback(() => {
+            res.status(500).json({ error: "Error adding new SKU" });
+          });
+        } else {
+          const newSKU = {
+            idSKU: result.insertId,
+            skuCode,
+            productionDate,
+            expiredDate,
+            inboundDate,
+            stok,
+          };
+
+          // Insert the SKU data into the history table as an addition transaction
+          const currentDate = new Date().toISOString().split('T')[0];
+          const insertHistoryQuery = `
+            INSERT INTO history (tanggal, jumlah, idBarang, idSKU, jenis_transaksi)
+            VALUES (?, ?, ?, ?, ?)
+          `;
+
+          connection.query(
+            insertHistoryQuery,
+            [currentDate, stok, idBarang, newSKU.idSKU, 'Addition'],
+            (err, historyResult) => {
+              if (err) {
+                console.error("Error adding to history:", err);
+                connection.rollback(() => {
+                  res.status(500).json({ error: "Error adding to history" });
+                });
+              } else {
+                connection.commit((err) => {
+                  if (err) {
+                    connection.rollback(() => {
+                      console.error("Error committing transaction:", err);
+                      res.status(500).json({ error: "Error committing transaction" });
+                    });
+                  } else {
+                    res.json({
+                      message: "New SKU added successfully",
+                      data: newSKU,
+                    });
+                  }
+                });
+              }
+            }
+          );
+        }
+      }
+    );
+  });
 });
+
 
 
 // Route to fetch return items with product and SKU details
@@ -285,7 +324,9 @@ app.get("/history", (req, res) => {
 app.get("/kasir", (req, res) => {
   const query = `
   SELECT
-    ROW_NUMBER() OVER (ORDER BY k.idTransaksi) AS No,
+    k.idTransaksi AS 'No',
+    p.idBarang AS 'idBarang',
+    s.idSkU AS 'idSKU',
     s.skuCode AS 'Kode Barang',
     p.nama AS 'Nama Barang',
     p.harga AS 'Harga Satuan',
@@ -309,7 +350,7 @@ app.get("/kasir", (req, res) => {
 // Route to insert data into the kasir table
 app.post("/kasir", (req, res) => {
   const { idTransaksi, jumlah, idSKU } = req.body;
-  console.log(req.body);
+  console.log("Received data :", req.body);
   // Check if idSKU is valid
   const checkSkuQuery = "SELECT * FROM skus WHERE idSKU = ?";
   connection.query(checkSkuQuery, [idSKU], (err, skuResults) => {
@@ -374,11 +415,11 @@ app.get("/products/idSKU/:namaProduk", (req, res) => {
 });
 
 app.post('/insert-history', async (req, res) => {
-  const { items } = req.body; // Mengambil items dari req.body
+  const { items } = req.body; // Get items from req.body
   console.log("Received data from frontend:", req.body);
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Invalid data provided' });
-  };
+  }
 
   // Get current date
   const currentDate = new Date().toISOString().split('T')[0];
@@ -390,14 +431,26 @@ app.post('/insert-history', async (req, res) => {
     }
 
     items.forEach(async item => {
-      const { idBarang, jumlah, idSKU,idTransaksi ,jenisTransaksi} = item;
+      const { idBarang, jumlah, idSKU, idTransaksi, jenisTransaksi } = item;
       const query = 'INSERT INTO history (tanggal, jumlah, idTransaksi, idBarang, idSKU, jenis_transaksi) VALUES (?, ?, ?, ?, ?, ?)';
       const values = [currentDate, jumlah, idTransaksi, idBarang, idSKU, jenisTransaksi];
- 
-    
+
       try {
         const result = await connection.query(query, values);
         console.log('Inserted data into history table:', result);
+
+        // Update the SKU quantity after successful history insertion
+        const updateSkuQuery = "UPDATE skus SET stok = stok - ? WHERE idSKU = ?";
+        connection.query(updateSkuQuery, [jumlah, idSKU], (err, updateResult) => {
+          if (err) {
+            connection.rollback(() => {
+              console.error("Error updating SKU quantity:", err);
+              res.status(500).json({ error: "Error updating SKU quantity" });
+            });
+          } else {
+            console.log("Updated SKU quantity:", updateResult);
+          }
+        });
       } catch (err) {
         connection.rollback(() => {
           console.error('Error inserting data into history table:', err);
@@ -405,7 +458,6 @@ app.post('/insert-history', async (req, res) => {
         return; // Return here to prevent sending a success response as well
       }
     });
-    
 
     // Commit the transaction
     connection.commit(err => {
@@ -420,6 +472,7 @@ app.post('/insert-history', async (req, res) => {
     });
   });
 });
+
 
 
 app.get('/products/oldest/:idBarang', (req, res) => {
