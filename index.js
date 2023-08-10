@@ -12,10 +12,10 @@ app.use(cors());
 
 // MySQL Connection
 const connection = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "inventorydb", // Replace with your database name
+  host: process.env.HOST,
+  user: process.env.USER,
+  password: process.env.PASSWORD,
+  database: process.env.DATABASE, // Replace with your database name
   multipleStatements: true, //
 });
 
