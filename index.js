@@ -2,6 +2,8 @@ const express = require("express");
 const mysql = require("mysql");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const fs = require("fs");
+require('dotenv').config();
 
 const app = express();
 const port = 8000;
@@ -11,14 +13,7 @@ app.use(bodyParser.json());
 app.use(cors());
 
 // MySQL Connection
-const connection = mysql.createConnection({
-  host: process.env.HOST,
-  user: process.env.USER,
-  password: process.env.PASSWORD,
-  database: process.env.DATABASE, // Replace with your database name
-  port: process.env.PORT,
-  multipleStatements: true, //
-});
+const connection = mysql.createConnection(process.env.DB_URL);
 
 connection.connect((err) => {
   if (err) throw err;
