@@ -13,7 +13,8 @@ app.use(bodyParser.json());
 app.use(cors());
 
 // MySQL Connection
-const connection = mysql.createConnection(process.env.DB_URL);
+const connection = mysql.createConnection('mysql://9ffvp4vhn3r0i8yk0m9r:pscale_pw_zlZ5tFub3IBD6i4qZPT9ifOrKpuhBluGgQ84w0vYk6g@aws.connect.psdb.cloud/inventory-db?ssl={"rejectUnauthorized":true}'
+);
 
 connection.connect((err) => {
   if (err) throw err;
