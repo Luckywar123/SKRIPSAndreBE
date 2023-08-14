@@ -1,5 +1,5 @@
 const express = require("express");
-const mysql = require("mysql");
+const mysql = require("mysql2");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const fs = require("fs");
@@ -13,8 +13,14 @@ app.use(bodyParser.json());
 app.use(cors());
 
 // MySQL Connection
-const connection = mysql.createConnection('mysql://9ffvp4vhn3r0i8yk0m9r:pscale_pw_zlZ5tFub3IBD6i4qZPT9ifOrKpuhBluGgQ84w0vYk6g@aws.connect.psdb.cloud/inventory-db?ssl={"rejectUnauthorized":true}'
-);
+const connection = mysql.createConnection({
+  host: process.env.HOST,
+  user: process.env.USER,
+  password: process.env.PASSWORD,
+  database: process.env.DATABASE, // Replace with your database name
+  port: process.env.PORT,
+  multipleStatements: true, 
+});
 
 connection.connect((err) => {
   if (err) throw err;
