@@ -1,425 +1,150 @@
-const express = require("express");
-const mysql = require("mysql2");
-const bodyParser = require("body-parser");
-const cors = require("cors");
-const fs = require("fs");
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-const port = 8000;
+const port = process.env.PORT;
+const { Sequelize } = require('sequelize');
 
 // Middleware
 app.use(bodyParser.json());
 app.use(cors());
 
-// MySQL Connection
-const connection = mysql.createConnection({
-  host: process.env.HOST,
-  user: process.env.USER,
-  password: process.env.PASSWORD,
-  database: process.env.DATABASE, // Replace with your database name
-  port: process.env.PORT,
-  multipleStatements: true, 
-});
+const sequelize = new Sequelize(
+  process.env.DATABASE,  // Nama database
+  process.env.USER,      // Username
+  process.env.PASSWORD,  // Password
+  {
+    host: process.env.HOST,    // Host
+    dialect: 'mysql',          // Dialect (bisa juga 'postgres', 'sqlite', dll.)
+    logging: false,            // Nonaktifkan logging
+  }
+);
 
-connection.connect((err) => {
-  if (err) throw err;
-  console.log("Connected to the MySQL database");
-});
+// Test koneksi
+sequelize
+  .authenticate()
+  .then(() => {
+    console.log('Connected to the database');
+  })
+  .catch((error) => {
+    console.error('Connection failed:', error);
+  });
+
+// Import and initialize User model
+const User = require('./models/User')(sequelize);
+
+const Product = require('./models/Product')(sequelize);
+const Sku = require('./models/Sku')(sequelize);
+const History = require('./models/History')(sequelize); // Import the History model
+const Kasir = require('./models/Kasir');
+const ReturnItem = require('./models/ReturnItem');
+
+
+// Set up associations
+Product.hasMany(Sku, { foreignKey: 'idBarang', as: 'skus' });
+Sku.belongsTo(Product, { foreignKey: 'idBarang', as: 'product' });
+Kasir.belongsTo(Sku, { foreignKey: 'idSKU' });
+History.belongsTo(Product, { foreignKey: 'idBarang', as: 'product' });
+History.belongsTo(Sku, { foreignKey: 'idSKU', as: 'sku' });
+History.belongsTo(Kasir, { foreignKey: 'idTransaksi', as: 'kasir' });
+
+
+
 // Route for user login
-app.post("/login", (req, res) => {
+app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  const query = "SELECT * FROM users WHERE username = ?";
-  connection.query(query, [username], (err, results) => {
-    if (err) {
-      console.error("Error fetching user data:", err);
-      res.status(500).json({ error: "Error fetching user data" });
-    } else {
-      if (results.length === 0) {
-        // If the user is not found, return an error response
-        res.status(401).json({ message: "User not found" });
-      } else {
-        // Check if the provided password matches the hashed password in the database
-        // (You should use a proper password hashing library like bcrypt for security)
-        const user = results[0];
-        if (user.password === password) {
-          // If the password matches, return a success response
-          res.json({ message: "Login successful" });
-        } else {
-          // If the password does not match, return an error response
-          res.status(401).json({ message: "Incorrect password" });
-        }
-      }
-    }
-  });
-});
-
-// Fetch products from the database
-app.get("/products", (req, res) => {
-  const query = "SELECT * FROM products";
-  connection.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching products:", err);
-      res.status(500).json({ error: "Error fetching products" });
-    } else {
-      res.json({ data: results });
-    }
-  });
-});
-
-// Fetch skus for a specific product
-app.get("/products/:idBarang/skus", (req, res) => {
-  const idBarang = req.params.idBarang;
-  const queryProduct = `SELECT nama 
-  FROM products
-  WHERE idBarang = ?
-  `;
-
-  const querySkus = "SELECT * FROM skus WHERE idBarang = ?"
-  connection.query([queryProduct, querySkus].join("; "), [idBarang, idBarang], (err, results) => {
-    if (err) {
-      console.error("Error fetching skus:", err);
-      res.status(500).json({ error: "Error fetching skus" });
-    } else {
-      productResults = results[0][0];
-      skusResults = results[1];
-
-      res.json({ data: {
-        nama: productResults.nama,
-        skus: skusResults,
-      } });
-    }
-  });
-});
-
-app.post("/products/:idBarang/skus", (req, res) => {
-  const idBarang = req.params.idBarang;
-  const { skuCode, productionDate, expiredDate, inboundDate, stok } = req.body;
-
-  const insertQuery = `
-    INSERT INTO skus (idBarang, skuCode, productionDate, expiredDate, inboundDate, stok)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
-
   console.log("Received data from frontend:", req.body);
 
-  connection.beginTransaction(async (err) => {
-    if (err) {
-      return res.status(500).json({ error: "Error starting database transaction" });
+  try {
+    const user = await User.findOne({
+      where: {
+        username: username,
+      },
+    });
+
+    if (!user) {
+      res.status(401).json({ message: 'User not found' });
+      return;
     }
 
-    connection.query(
-      insertQuery,
-      [idBarang, skuCode, productionDate, expiredDate, inboundDate, stok],
-      (err, result) => {
-        if (err) {
-          console.error("Error adding new SKU:", err);
-          connection.rollback(() => {
-            res.status(500).json({ error: "Error adding new SKU" });
-          });
-        } else {
-          const newSKU = {
-            idSKU: result.insertId,
-            skuCode,
-            productionDate,
-            expiredDate,
-            inboundDate,
-            stok,
-          };
-
-          // Insert the SKU data into the history table as an addition transaction
-          const currentDate = new Date().toISOString().split('T')[0];
-          const insertHistoryQuery = `
-            INSERT INTO history (tanggal, jumlah, idBarang, idSKU, jenis_transaksi)
-            VALUES (?, ?, ?, ?, ?)
-          `;
-
-          connection.query(
-            insertHistoryQuery,
-            [currentDate, stok, idBarang, newSKU.idSKU, 'Barang Masuk'],
-            (err, historyResult) => {
-              if (err) {
-                console.error("Error adding to history:", err);
-                connection.rollback(() => {
-                  res.status(500).json({ error: "Error adding to history" });
-                });
-              } else {
-                connection.commit((err) => {
-                  if (err) {
-                    connection.rollback(() => {
-                      console.error("Error committing transaction:", err);
-                      res.status(500).json({ error: "Error committing transaction" });
-                    });
-                  } else {
-                    res.json({
-                      message: "New SKU added successfully",
-                      data: newSKU,
-                    });
-                  }
-                });
-              }
-            }
-          );
-        }
-      }
-    );
-  });
-});
-
-
-
-// Route to fetch return items with product and SKU details
-app.get("/return-items", (req, res) => {
-  const query = `
-    SELECT r.id, r.jumlah, r.alasan, p.nama AS nama_barang, s.skuCode
-    FROM return_items r
-    LEFT JOIN products p ON r.idBarang = p.idBarang
-    LEFT JOIN skus s ON r.idSKU = s.idSKU
-  `;
-  connection.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching return items:", err);
-      res.status(500).json({ error: "Error fetching return items" });
+    if (user.password === password) {
+      res.json({ message: 'Login successful' });
     } else {
-      res.json({ data: results });
+      res.status(401).json({ message: 'Incorrect password' });
     }
-  });
-});
-
-// Add a new product or update an existing product
-app.post("/products", (req, res) => {
-  const newProduct = req.body;
-  if (!newProduct.idBarang) {
-    // If idBarang is not provided, it's a new product, so INSERT into products table
-    const insertQuery = "INSERT INTO products SET ?";
-    connection.query(insertQuery, newProduct, (err, results) => {
-      if (err) {
-        console.error("Error adding new product:", err);
-        res.status(500).json({ error: "Error adding new product" });
-      } else {
-        const insertedProduct = { ...newProduct, idBarang: results.insertId };
-        res.json({
-          message: "Product added successfully",
-          data: insertedProduct,
-        });
-      }
-    });
-  } else {
-    // If idBarang is provided, it's an existing product, so UPDATE the product in products table
-    const idBarang = newProduct.idBarang;
-    delete newProduct.idBarang; // Remove the idBarang from the newProduct object
-    const updateQuery = "UPDATE products SET ? WHERE idBarang = ?";
-    connection.query(updateQuery, [newProduct, idBarang], (err, results) => {
-      if (err) {
-        console.error("Error updating product:", err);
-        res.status(500).json({ error: "Error updating product" });
-      } else {
-        res.json({ message: "Product updated successfully", data: newProduct });
-      }
-    });
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    res.status(500).json({ error: 'Error fetching user data' });
   }
 });
-app.post("/return-items", (req, res) => {
-  const { idBarang, idSKU, jumlah, alasan } = req.body;
 
-  // Periksa apakah SKU yang diberikan valid
-  const checkSkuQuery = "SELECT * FROM skus WHERE idSKU = ?";
-  connection.query(checkSkuQuery, [idSKU], (err, skuResults) => {
-    if (err) {
-      console.error("Error checking SKU:", err);
-      res.status(500).json({ error: "Error checking SKU" });
-      return;
-    }
 
-    if (skuResults.length === 0) {
-      // Jika idSKU tidak valid, kembalikan pesan kesalahan
-      res.status(404).json({ message: "Invalid SKU" });
-    } else {
-      // Tambahkan data pengembalian ke dalam tabel return_items
-      const insertQuery =
-        "INSERT INTO return_items (idBarang, idSKU, jumlah, alasan) VALUES (?, ?, ?, ?)";
-      connection.query(
-        insertQuery,
-        [idBarang, idSKU, jumlah, alasan],
-        (err, result) => {
-          if (err) {
-            console.error("Error adding return item:", err);
-            res.status(500).json({ error: "Error adding return item" });
-          } else {
-            const insertedItem = {
-              id: result.insertId,
-              idBarang,
-              idSKU,
-              jumlah,
-              alasan,
-            };
-
-            // Update the SKU quantity
-            const updateSkuQuery = "UPDATE skus SET stok = stok - ? WHERE idSKU = ?";
-            connection.query(updateSkuQuery, [jumlah, idSKU], (err) => {
-              if (err) {
-                console.error("Error updating SKU quantity:", err);
-                res.status(500).json({ error: "Error updating SKU quantity" });
-              } else {
-                // Determine the transaction type and set jenis_transaksi to "Return"
-                const jenisTransaksi = "Return";
-
-                // Insert return item data into the history table with current date
-                const currentDate = new Date().toISOString().slice(0, 10);
-                const insertHistoryQuery = `
-                  INSERT INTO history (idBarang, idSKU, jumlah, idReturn, jenis_transaksi, tanggal)
-                  VALUES (?, ?, ?, ?, ?, ?)
-                `;
-                connection.query(
-                  insertHistoryQuery,
-                  [idBarang, idSKU, jumlah, insertedItem.id, jenisTransaksi, currentDate],
-                  (err) => {
-                    if (err) {
-                      console.error("Error adding to history:", err);
-                      res.status(500).json({ error: "Error adding to history" });
-                    } else {
-                      res.json({
-                        message: "Return item added successfully",
-                        data: insertedItem,
-                      });
-                    }
-                  }
-                );
-              }
-            });
-          }
-        }
-      );
-    }
-  });
+// Fetch products from the database
+app.get('/products', async (req, res) => {
+  try {
+    const products = await Product.findAll();
+    res.json({ data: products });
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).json({ error: 'Error fetching products' });
+  }
 });
 
 
-app.get("/history", (req, res) => {
-  const query = `
-    SELECT
-      h.idHistory AS 'ID History',
-      DATE_FORMAT(h.tanggal, '%Y-%m-%d') AS 'Tanggal', -- Mengambil hanya bagian tanggal
-      p.nama AS 'Nama Barang',
-      h.jumlah AS 'Jumlah (Box)',
-      s.skuCode AS 'SKU',
-      h.jenis_transaksi AS 'Jenis Transaksi'
-    FROM history h
-    LEFT JOIN products p ON h.idBarang = p.idBarang
-    LEFT JOIN skus s ON h.idSKU = s.idSKU
-    LEFT JOIN kasir t ON h.idTransaksi = t.idTransaksi;
-  `;
-  
-  connection.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching history:", err);
-      res.status(500).json({ error: "Error fetching history" });
+app.get("/products/:idBarang/skus", async (req, res) => {
+  const idBarang = req.params.idBarang;
+
+  try {
+    const product = await Product.findOne({
+      where: { idBarang },
+      include: [{ model: Sku, as: 'skus' }] // Include the 'skus' association
+    });
+
+    if (product) {
+      res.json({
+        data: {
+          nama: product.nama,
+          skus: product.skus, // Use 'skus' from the association alias
+        },
+      });
     } else {
-      console.log("Fetched history data:", results);
-      res.json({ data: results });
+      res.status(404).json({ message: "Product not found" });
     }
-  });
+  } catch (error) {
+    console.error("Error fetching skus:", error);
+    res.status(500).json({ error: "Error fetching skus" });
+  }
 });
 
+// Route to fetch return items with product and SKU details
+app.get("/return-items", async (req, res) => {
+  try {
+    const returnItems = await ReturnItem.findAll({
+      include: [
+        {
+          model: Product, // Import and define the Product model
+          attributes: ['nama'],
+        },
+        {
+          model: Sku, // Import and define the Sku model
+          attributes: ['skuCode'],
+        },
+      ],
+    });
 
-
-// Route to fetch data from the kasir table along with product details
-app.get("/kasir", (req, res) => {
-  const query = `
-  SELECT
-    k.idTransaksi AS 'No',
-    p.idBarang AS 'idBarang',
-    s.idSkU AS 'idSKU',
-    s.skuCode AS 'Kode Barang',
-    p.nama AS 'Nama Barang',
-    p.harga AS 'Harga Satuan',
-    k.jumlah AS 'Jumlah',
-    p.harga * k.jumlah AS 'Harga'
-  FROM kasir k
-  JOIN skus s ON k.idSKU = s.idSKU
-  JOIN products p ON s.idBarang = p.idBarang;
-
-  `;
-  connection.query(query, (err, results) => {
-    if (err) {
-      console.error("Error fetching kasir data:", err);
-      res.status(500).json({ error: "Error fetching kasir data" });
-    } else {
-      res.json({ data: results });
-    }
-  });
-});
-
-// Route to insert data into the kasir table
-app.post("/kasir", (req, res) => {
-  const { idTransaksi, jumlah, idSKU } = req.body;
-  console.log("Received data :", req.body);
-  // Check if idSKU is valid
-  const checkSkuQuery = "SELECT * FROM skus WHERE idSKU = ?";
-  connection.query(checkSkuQuery, [idSKU], (err, skuResults) => {
-    if (err) {
-      console.error("Error checking SKU:", err);
-      res.status(500).json({ error: "Error checking SKU" });
-      return;
-    }
-
-    if (skuResults.length === 0) {
-      // If idSKU is not valid, return an error
-      res.status(404).json({ message: "Invalid SKU" });
-    } else {
-      // Proceed to insert data into kasir table
-      const insertQuery = `
-        INSERT INTO kasir (idTransaksi, jumlah, idSKU)
-        VALUES (?, ?, ?)
-      `;
-
-      connection.query(
-        insertQuery,
-        [idTransaksi, jumlah, idSKU],
-        (err, result) => {
-          if (err) {
-            console.error("Error adding to kasir:", err);
-            res.status(500).json({ error: "Error adding to kasir" });
-          } else {
-            const newData = {
-              idTransaksi,
-              jumlah,
-              idSKU
-            };
-            res.json({
-              message: "Data added to kasir successfully",
-              data: newData,
-            });
-          }
-        }
-      );
-    }
-  });
-});
-
-app.get("/products/idSKU/:namaProduk", (req, res) => {
-  const namaProduk = req.params.namaProduk;
-
-  const query = `
-    SELECT p.idBarang, p.nama AS 'Nama Barang', s.skuCode AS 'Kode SKU'
-    FROM products p
-    JOIN skus s ON p.idBarang = s.idBarang
-    WHERE p.nama = ?;
-  `;
-
-  connection.query(query, [namaProduk], (err, results) => {
-    if (err) {
-      console.error("Error fetching product by name:", err);
-      res.status(500).json({ error: "Error fetching product by name" });
-    } else {
-      res.json({ data: results });
-    }
-  });
+    res.json({ data: returnItems });
+  } catch (error) {
+    console.error("Error fetching return items:", error);
+    res.status(500).json({ error: "Error fetching return items" });
+  }
 });
 
 app.post('/insert-history', async (req, res) => {
-  const { items } = req.body; // Get items from req.body
-  console.log("Received data from frontend:", req.body);
+  const { items } = req.body;
+  console.log(req.body);
+
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Invalid data provided' });
   }
@@ -427,85 +152,350 @@ app.post('/insert-history', async (req, res) => {
   // Get current date
   const currentDate = new Date().toISOString().split('T')[0];
 
-  // Begin a new transaction using the connection
-  connection.beginTransaction(async err => {
-    if (err) {
-      return res.status(500).json({ error: 'Error starting database transaction' });
-    }
+  try {
+    // Start a new Sequelize transaction
+    await sequelize.transaction(async (transaction) => {
+      for (const item of items) {
+        const { idBarang, jumlah, idSKU, idTransaksi, jenisTransaksi } = item;
 
-    items.forEach(async item => {
-      const { idBarang, jumlah, idSKU, idTransaksi, jenisTransaksi } = item;
-      const query = 'INSERT INTO history (tanggal, jumlah, idTransaksi, idBarang, idSKU, jenis_transaksi) VALUES (?, ?, ?, ?, ?, ?)';
-      const values = [currentDate, jumlah, idTransaksi, idBarang, idSKU, jenisTransaksi];
+        // Insert data into history table
+        await History.create({
+          tanggal: currentDate,
+          jumlah,
+          idTransaksi,
+          idBarang,
+          idSKU,
+          jenis_transaksi: jenisTransaksi,
+        }, { transaction });
 
-      try {
-        const result = await connection.query(query, values);
-        console.log('Inserted data into history table:', result);
-
-        // Update the SKU quantity after successful history insertion
-        const updateSkuQuery = "UPDATE skus SET stok = stok - ? WHERE idSKU = ?";
-        connection.query(updateSkuQuery, [jumlah, idSKU], (err, updateResult) => {
-          if (err) {
-            connection.rollback(() => {
-              console.error("Error updating SKU quantity:", err);
-              res.status(500).json({ error: "Error updating SKU quantity" });
-            });
-          } else {
-            console.log("Updated SKU quantity:", updateResult);
-          }
+        // Update SKU quantity
+        await Sku.decrement('stok', {
+          by: jumlah,
+          where: { idSKU },
+          transaction,
         });
-      } catch (err) {
-        connection.rollback(() => {
-          console.error('Error inserting data into history table:', err);
-        });
-        return; // Return here to prevent sending a success response as well
       }
     });
 
-    // Commit the transaction
-    connection.commit(err => {
-      if (err) {
-        connection.rollback(() => {
-          console.error('Error committing transaction:', err);
-        });
-        return res.status(500).json({ error: 'Error committing transaction' });
-      }
-
-      res.status(200).json({ message: 'Transaction added to history successfully' });
+    res.status(200).json({ message: 'Transaction added to history successfully' });
+  } catch (error) {
+    console.error('Error inserting data into history table:', error);
+    res.status(500).json({ error: 'Error inserting data into history table' });
+  }
+});
+// Fetch history data
+app.get('/history', async (req, res) => {
+  console.log(req.body);
+  try {
+    const historyData = await History.findAll({
+      attributes: [
+        'idHistory',
+        [sequelize.fn('DATE_FORMAT', sequelize.col('tanggal'), '%Y-%m-%d'), 'Tanggal'],
+        [sequelize.col('product.nama'), 'Nama Barang'],
+        'jumlah',
+        [sequelize.col('sku.skuCode'), 'SKU'],
+        'jenis_transaksi',
+      ],
+      include: [
+        {
+          model: Product,
+          as: 'product',
+          attributes: [],
+        },
+        {
+          model: Sku,
+          as: 'sku',
+          attributes: [],
+        },
+      ],
     });
-  });
+
+    res.json({ data: historyData });
+  } catch (error) {
+    console.error('Error fetching history data:', error);
+    res.status(500).json({ error: 'Error fetching history data' });
+  }
 });
 
 
 
-app.get('/products/oldest/:idBarang', (req, res) => {
+
+// Route to insert data into the kasir table
+// app.post("/kasir", async (req, res) => {
+//   const { idTransaksi, jumlah, idSKU } = req.body;
+//   console.log("Received data :", req.body);
+
+//   try {
+//     const sku = await Sku.findByPk(idSKU, {
+//       include: {
+//         model: Product,
+//         attributes: ['idBarang', 'nama', 'harga'],
+//       },
+//     });
+
+//     if (!sku) {
+//       res.status(404).json({ message: 'Invalid SKU' });
+//       return;
+//     }
+
+//     await Kasir.create({
+//       idTransaksi,
+//       jumlah,
+//       idSKU,
+//     });
+
+//     res.json({
+//       message: "Data added to kasir successfully",
+//       data: {
+//         idTransaksi,
+//         jumlah,
+//         sku: {
+//           idSKU: sku.idSKU,
+//           skuCode: sku.skuCode,
+//           product: {
+//             idBarang: sku.product.idBarang,
+//             nama: sku.product.nama,
+//             harga: sku.product.harga,
+//           },
+//         },
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error adding to kasir:", error);
+//     res.status(500).json({ error: "Error adding to kasir" });
+//   }
+// });
+
+// Fetch kasir data
+app.get("/kasir", async (req, res) => {
+  try {
+    const kasir = await Kasir.findAll({
+      include: [
+        {
+          model: Sku,
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['nama', 'harga','idBarang'],
+            }
+          ],
+          attributes: ['skuCode'],
+        },
+      ],
+    });
+
+    // Log the retrieved data before sending the response
+    console.log("Retrieved Kasir Data:", kasir);
+
+    res.json({ data: kasir });
+  } catch (error) {
+    console.error('Error fetching kasir:', error);
+    res.status(500).json({ error: 'Error fetching kasir' });
+  }
+});
+
+
+
+
+
+
+
+
+app.post('/products', async (req, res) => {
+  const newProduct = req.body;
+  try {
+    const createdProduct = await Product.create(newProduct);
+    res.json({
+      message: 'Product added successfully',
+      data: createdProduct,
+    });
+  } catch (error) {
+    console.error('Error adding new product:', error);
+    res.status(500).json({ error: 'Error adding new product' });
+  }
+});
+
+app.post('/products/:idBarang/skus', async (req, res) => {
+  const idBarang = req.params.idBarang;
+  const { skuCode, productionDate, expiredDate, inboundDate, stok } = req.body;
+
+  try {
+    // Create the new SKU record
+    const createdSku = await Sku.create({
+      idBarang,
+      skuCode,
+      productionDate,
+      expiredDate,
+      inboundDate,
+      stok,
+    });
+
+    // Insert SKU data into the history table as an addition transaction
+    const currentDate = new Date().toISOString().split('T')[0];
+    await History.create({
+      tanggal: currentDate,
+      jumlah: stok,
+      idBarang: idBarang,
+      idSKU: createdSku.idSKU,
+      jenis_transaksi: 'Barang Masuk',
+    });
+
+    res.json({
+      message: 'SKU added successfully',
+      data: createdSku,
+    });
+  } catch (error) {
+    console.error('Error adding new SKU:', error);
+    res.status(500).json({ error: 'Error adding new SKU' });
+  }
+});
+
+
+app.post("/return-items", async (req, res) => {
+  const { idBarang, idSKU, jumlah, alasan } = req.body;
+
+  try {
+    // Periksa apakah SKU yang diberikan valid
+    const sku = await Sku.findOne({
+      where: { idSKU: idSKU },
+    });
+
+    if (!sku) {
+      // Jika idSKU tidak valid, kembalikan pesan kesalahan
+      return res.status(404).json({ message: "Invalid SKU" });
+    }
+
+    // Tambahkan data pengembalian ke dalam tabel ReturnItem
+    const returnItem = await ReturnItem.create({
+      idBarang: idBarang,
+      idSKU: idSKU,
+      jumlah: jumlah,
+      alasan: alasan,
+    });
+
+    // Update the SKU quantity
+    sku.stok -= jumlah;
+    await sku.save();
+
+    // Determine the transaction type and set jenis_transaksi to "Return"
+    const jenisTransaksi = "Return";
+
+    // Insert return item data into the history table with current date
+    const currentDate = new Date().toISOString().slice(0, 10);
+    await History.create({
+      idBarang: idBarang,
+      idSKU: idSKU,
+      jumlah: jumlah,
+      idReturn: returnItem.id,
+      jenis_transaksi: jenisTransaksi,
+      tanggal: currentDate,
+    });
+
+    res.json({
+      message: "Return item added successfully",
+      data: returnItem,
+    });
+  } catch (error) {
+    console.error("Error adding return item:", error);
+    res.status(500).json({ error: "Error adding return item" });
+  }
+});
+
+
+app.post("/kasir", async (req, res) => {
+  const { idTransaksi, jumlah, idSKU } = req.body;
+  console.log("Received data:", req.body);
+
+  try {
+    // Check if idSKU is valid
+    const sku = await Sku.findOne({
+      where: { idSKU: idSKU }
+    });
+
+    if (!sku) {
+      // If idSKU is not valid, return an error
+      res.status(404).json({ message: "Invalid SKU" });
+      return;
+    }
+
+    // Proceed to insert data into kasir table using Sequelize
+    const createdKasirTransaction = await Kasir.create({
+      idTransaksi: idTransaksi,
+      jumlah: jumlah,
+      idSKU: idSKU
+    });
+
+    res.json({
+      message: "Data added to kasir successfully",
+      data: {
+        idTransaksi: createdKasirTransaction.idTransaksi,
+        jumlah: createdKasirTransaction.jumlah,
+        idSKU: createdKasirTransaction.idSKU
+      }
+    });
+  } catch (error) {
+    console.error("Error adding to kasir:", error);
+    res.status(500).json({ error: "Error adding to kasir" });
+  }
+});
+
+app.get('/products/oldest/:idBarang', async (req, res) => {
   const idBarang = req.params.idBarang;
 
-  const query = `
-    SELECT s.idSKU, s.inboundDate, p.nama
-    FROM skus s
-    JOIN products p ON s.idBarang = p.idBarang
-    WHERE s.idBarang = ? 
-    ORDER BY s.inboundDate ASC
-    LIMIT 1
-  `;
+  try {
+    const result = await Sku.findOne({
+      attributes: ['idSKU', 'inboundDate'],
+      where: { idBarang: idBarang },
+      include: [
+        {
+          model: Product,
+          as: 'product',
+          attributes: ['nama'],
+        },
+      ],
+      order: [['inboundDate', 'ASC']],
+      limit: 1,
+    });
 
-  connection.query(query, [idBarang], (err, results) => {
-    if (err) {
-      console.error('Error fetching oldest product:', err);
-      res.status(500).json({ error: 'Error fetching oldest product' });
+    if (result) {
+      res.json(result);
     } else {
-      if (results.length > 0) {
-        res.json(results[0]);
-      } else {
-        res.json({ idSKU: null });
-      }
+      res.json({ idSKU: null });
     }
-  });
+  } catch (error) {
+    console.error('Error fetching oldest product:', error);
+    res.status(500).json({ error: 'Error fetching oldest product' });
+  }
+});
+
+app.get('/products/idSKU/:namaProduk', async (req, res) => {
+  const namaProduk = req.params.namaProduk;
+
+  try {
+    const results = await Product.findAll({
+      attributes: ['idBarang', 'nama'],
+      include: [
+        {
+          model: Sku,
+          as: 'skus', // Specify the alias for the association
+          attributes: ['skuCode'],
+        },
+      ],
+      where: { nama: namaProduk },
+    });
+
+    res.json({ data: results });
+  } catch (error) {
+    console.error('Error fetching product by name:', error);
+    res.status(500).json({ error: 'Error fetching product by name' });
+  }
 });
 
 
-// Start the server
+
+
+// Start the Express server
 app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+  console.log(`Server is running on port ${port}`);
 });
